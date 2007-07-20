@@ -41,6 +41,7 @@ namespace {
 
   struct CandidateRefGreaterByEt {
     bool operator() (const reco::CandidateRef& first, const reco::CandidateRef& second) {
+      std::cout << "CandidateRefGreaterByEt::operator()->" << std::endl;
       NumericSafeGreaterByEt<reco::Candidate> comparator;
       return comparator (*first, *second);
     }
@@ -68,6 +69,7 @@ void ProtoJet::putTowers(const Constituents& towers) {
 }
 
 void ProtoJet::reorderTowers () {
+  return;
   CandidateRefGreaterByEt comparator;
   std::sort (mConstituents.begin(), mConstituents.end(), comparator); 
 }
