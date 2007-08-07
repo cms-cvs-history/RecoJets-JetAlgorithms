@@ -1,7 +1,7 @@
 /// Algorithm to convert transient protojets into persistent jets
 /// Author: F.Ratnikov, UMd
 /// Mar. 8, 2006
-/// $Id: JetMaker.cc,v 1.26 2007/05/24 18:05:44 fedor Exp $
+/// $Id: JetMaker.cc,v 1.27 2007/07/25 22:09:40 fedor Exp $
 
 #include "DataFormats/EcalDetId/interface/EcalSubdetector.h"
 #include "DataFormats/HcalDetId/interface/HcalDetId.h"
@@ -101,12 +101,9 @@ namespace {
       fJetSpecific->mEnergyFractionHadronic = eInHad / towerEnergy;
       fJetSpecific->mEnergyFractionEm = eInEm / towerEnergy;
     }
-    else {
-      fJetSpecific->mEnergyFractionHadronic = -99; // unphysics
-      fJetSpecific->mEnergyFractionEm = -99;
-      std::cerr << "JetMaker::makeSpecific (CaloJet)-> ERROR: constituent tower energy is " << towerEnergy
-		<< ", Em/Had contributions are " << eInEm << '/' << eInHad << std::endl
-		<< ". THIS SHOULD NEVER HAPPEN - please inform ratnikov@fnal.gov. Thank you!" << std::endl;
+    else { // HO only jet
+      fJetSpecific->mEnergyFractionHadronic = 0; 
+      fJetSpecific->mEnergyFractionEm = 0;
     }
     fJetSpecific->mTowersArea = jetArea;
     fJetSpecific->mMaxEInEmTowers = 0;
