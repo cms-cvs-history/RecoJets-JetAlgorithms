@@ -28,25 +28,17 @@ public:
 
   typedef math::XYZTLorentzVector LorentzVector;
   /** Default Constructor */
-  ProtoJet();
+  ProtoJet() {};
 
   //**Constructor. Runs off an array of CaloTower* */
   ProtoJet(const Constituents& theConstituents);
 
  //**Full Constructor */
-  ProtoJet(const LorentzVector& fP4, const Constituents& fConstituents); 
+ ProtoJet(const LorentzVector& fP4, const Constituents& fConstituents) 
+   : mP4 (fP4), mConstituents (fConstituents) {}
 
   /**  Destructor*/
   ~ProtoJet() {}
-
-  /// Set Jet area as calculated by algorithm
-  void setJetArea (float fArea);
-
-  ///  Set pileup energy contribution as calculated by algorithm
-  void setPileup (float fEnergy);
-
-  ///  Set number of passes taken by algorithm
-  void setNPasses (int fPasses);
 
 
   // The Jet four-vector as a true Lorentz vector
@@ -85,8 +77,7 @@ public:
   
   
   /** Returns the list of tower in a particular protojet */
-  const Constituents& getTowerList();
-  const Constituents getTowerList() const;
+  const Constituents& getTowerList() const {return mConstituents;} 
   
   /** Sets the list of towers in a protojet */
   void putTowers(const Constituents& towers);
@@ -107,11 +98,6 @@ private:
   LorentzVector mP4;
   /** Jet constituents */
   Constituents mConstituents;
-  /// Parameters returning from algorithms 
-  float mJetArea;
-  float mPileupEnergy;
-  int mPassNumber;
-  bool mOrdered;
 };
 
 #endif

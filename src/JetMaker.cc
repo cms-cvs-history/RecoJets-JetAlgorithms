@@ -1,7 +1,7 @@
 /// Algorithm to convert transient protojets into persistent jets
 /// Author: F.Ratnikov, UMd
 /// Mar. 8, 2006
-/// $Id: JetMaker.cc,v 1.26 2007/05/24 18:05:44 fedor Exp $
+/// $Id: JetMaker.cc,v 1.23 2007/05/08 05:39:52 fedor Exp $
 
 #include "DataFormats/EcalDetId/interface/EcalSubdetector.h"
 #include "DataFormats/HcalDetId/interface/HcalDetId.h"
@@ -52,6 +52,8 @@ namespace {
 	  eHCal_i.push_back(tower->hadEnergy()); 
 	  eInHad += tower->hadEnergy();
 	  
+	  eInHO += tower->outerEnergy();
+	  
 	  //  figure out contributions
 	  switch (JetMaker::hcalSubdetector (tower->id().ieta())) {
 	  case HcalBarrel:
@@ -97,17 +99,8 @@ namespace {
     fJetSpecific->mEmEnergyInHF = eEmInHF;
     fJetSpecific->mEmEnergyInEB = eInEB;
     fJetSpecific->mEmEnergyInEE = eInEE;
-    if (towerEnergy > 0) {
-      fJetSpecific->mEnergyFractionHadronic = eInHad / towerEnergy;
-      fJetSpecific->mEnergyFractionEm = eInEm / towerEnergy;
-    }
-    else {
-      fJetSpecific->mEnergyFractionHadronic = -99; // unphysics
-      fJetSpecific->mEnergyFractionEm = -99;
-      std::cerr << "JetMaker::makeSpecific (CaloJet)-> ERROR: constituent tower energy is " << towerEnergy
-		<< ", Em/Had contributions are " << eInEm << '/' << eInHad << std::endl
-		<< ". THIS SHOULD NEVER HAPPEN - please inform ratnikov@fnal.gov. Thank you!" << std::endl;
-    }
+    fJetSpecific->mEnergyFractionHadronic = eInHad / towerEnergy;
+    fJetSpecific->mEnergyFractionEm = eInEm / towerEnergy;
     fJetSpecific->mTowersArea = jetArea;
     fJetSpecific->mMaxEInEmTowers = 0;
     fJetSpecific->mMaxEInHadTowers = 0;
@@ -134,11 +127,11 @@ namespace {
     // 2.- Get the corresponding PFCandidate
     // 3.- Calculate the different PFJet specific quantities
 
-    float chargedHadronEnergy=0.;
-    float neutralHadronEnergy=0.;
-    float chargedEmEnergy=0.;
-    float neutralEmEnergy=0.;
-    float chargedMuEnergy=0.;
+    float chargedHadronPt=0.;
+    float neutralHadronPt=0.;
+    float chargedEmPt=0.;
+    float neutralEmPt=0.;
+    float chargedMuPt=0.;
     int   chargedMultiplicity=0;
     int   neutralMultiplicity=0;
     int   muonMultiplicity=0;
@@ -151,28 +144,28 @@ namespace {
 	if (pfCand) {
 	  switch ( PFCandidate::ParticleType (pfCand->particleId())) {
 	  case PFCandidate::h:       // charged hadron
-	    chargedHadronEnergy += pfCand->energy();
+	    chargedHadronPt += pfCand->pt();
 	    chargedMultiplicity++;
 	    break;
 	    
 	  case PFCandidate::e:       // electron 
-	    chargedEmEnergy += pfCand->energy(); 
+	    chargedEmPt += pfCand->pt(); 
 	    chargedMultiplicity++;
 	    break;
 	    
 	  case PFCandidate::mu:      // muon
-	    chargedMuEnergy += pfCand->energy();
+	    chargedMuPt += pfCand->pt();
 	    chargedMultiplicity++;
 	    muonMultiplicity++;
 	    break;
 	    
 	  case PFCandidate::gamma:   // photon
-	    neutralEmEnergy += pfCand->energy();
+	    neutralEmPt += pfCand->pt();
 	    neutralMultiplicity++;
 	    break;
 	    
 	  case  PFCandidate::h0 :    // neutral hadron
-	    neutralHadronEnergy += pfCand->energy();
+	    neutralHadronPt += pfCand->pt();
 	    neutralMultiplicity++;
 	    break;
 	  
@@ -189,11 +182,11 @@ namespace {
 	std::cerr << "JetMaker::makeSpecific (PFJetJet)-> Referred constituent is not available in the event" << std::endl;
       }
     }
-    fJetSpecific->mChargedHadronEnergy=chargedHadronEnergy;
-    fJetSpecific->mNeutralHadronEnergy= neutralHadronEnergy;
-    fJetSpecific->mChargedEmEnergy=chargedEmEnergy;
-    fJetSpecific->mChargedMuEnergy=chargedMuEnergy;
-    fJetSpecific->mNeutralEmEnergy=neutralEmEnergy;
+    fJetSpecific->mChargedHadronPt=chargedHadronPt;
+    fJetSpecific->mNeutralHadronPt= neutralHadronPt;
+    fJetSpecific->mChargedEmPt=chargedEmPt;
+    fJetSpecific->mChargedMuPt=chargedMuPt;
+    fJetSpecific->mNeutralEmPt=neutralEmPt;
     fJetSpecific->mChargedMultiplicity=chargedMultiplicity;
     fJetSpecific->mNeutralMultiplicity=neutralMultiplicity;
     fJetSpecific->mMuonMultiplicity=muonMultiplicity;
