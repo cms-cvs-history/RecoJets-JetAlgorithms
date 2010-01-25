@@ -27,7 +27,7 @@ PileUpSubtractor::PileUpSubtractor(const edm::ParameterSet& iConfig,
   inputs_(&input),
   fjInputs_(&towers),
   fjJets_(&output),
-  reRunAlgo_ (iConfig.getUntrackedParameter<bool>("reRunAlgo",true)),
+  reRunAlgo_ (iConfig.getUntrackedParameter<bool>("reRunAlgo",false)),
   jetPtMin_(iConfig.getParameter<double>       ("jetPtMin")),
   nSigmaPU_(iConfig.getParameter<double>("nSigmaPU")),
   radiusPU_(iConfig.getParameter<double>("radiusPU")),
@@ -145,9 +145,7 @@ void PileUpSubtractor::calculatePedestal( vector<fastjet::PseudoJet> const & col
           esigma_[it] = 0.;
 	}
       cout<<"Pedestals : "<<emean_[it]<<"  "<<esigma_[it]<<endl;
-
     }
-
 }
 
 
@@ -255,10 +253,13 @@ void PileUpSubtractor::calculateOrphanInput(vector<fastjet::PseudoJet> & orphanI
 }
 
 
-void PileUpSubtractor::offsetCorrectJets(vector<fastjet::PseudoJet> & orphanInput) 
+void PileUpSubtractor::offsetCorrectJets() 
 {
 
   cout<<"The subtractor correcting jets..."<<endl;
+
+  jetRawET_.clear();
+  jetOffset_.clear();
 
   using namespace reco;
 
@@ -267,54 +268,49 @@ void PileUpSubtractor::offsetCorrectJets(vector<fastjet::PseudoJet> & orphanInpu
     const fastjet::JetDefinition def = fjClusterSeq_->jet_def();
     fjClusterSeq_.reset(new fastjet::ClusterSequence( *fjInputs_, def ));
     *fjJets_ = fastjet::sorted_by_pt(fjClusterSeq_->inclusive_jets(jetPtMin_));
-  }else{
+  }
 
   //    
   // Reestimate energy of jet (energy of jet with initial map)
   //
-  vector<fastjet::PseudoJet>::iterator pseudojetTMP = fjJets_->begin (),
-    jetsEnd = fjJets_->end();
-  for (; pseudojetTMP != jetsEnd; ++pseudojetTMP) {
+     vector<fastjet::PseudoJet>::iterator pseudojetTMP = fjJets_->begin (),
+	jetsEnd = fjJets_->end();
+     for (; pseudojetTMP != jetsEnd; ++pseudojetTMP) {
 
-    // get the constituents from fastjet
-    std::vector<fastjet::PseudoJet> towers =
-      sorted_by_pt((fjClusterSeq_)->constituents(*pseudojetTMP));
-    
-    double offset = 0.;
-      
-    for(vector<fastjet::PseudoJet>::const_iterator ito = towers.begin(),
-	  towEnd = towers.end(); 
-	ito != towEnd; 
-	++ito)
-      {
-	  
-	 const reco::CandidatePtr& originalTower = (*inputs_)[ito->user_index()];
+	int ijet = pseudojetTMP - fjJets_->begin();
+	jetRawET_.push_back(0);
+	jetOffset_.push_back(0);
 
-        int it = ieta( originalTower );
-        double Original_Et = originalTower->et();
+	std::vector<fastjet::PseudoJet> towers =
+	   sorted_by_pt(fjClusterSeq_->constituents(*pseudojetTMP));
 
-        double etnew = Original_Et - (*(emean_.find(it))).second - (*(esigma_.find(it))).second;
-	  
-	if( etnew <0.) etnew = 0.;
-	  
-	offset = offset + etnew;
+	double offset = 0.;	
+	for(vector<fastjet::PseudoJet>::const_iterator ito = towers.begin(),
+	    towEnd = towers.end(); 
+	    ito != towEnd; 
+	    ++ito)
+	   {
+	      const reco::CandidatePtr& originalTower = (*inputs_)[ito->user_index()];
+	      int it = ieta( originalTower );
+	      double Original_Et = originalTower->et();
+	      double etnew = Original_Et - (*emean_.find(it)).second - (*esigma_.find(it)).second; 
+	      if( etnew <0.) etnew = 0.;
+	      offset = offset + etnew;
 
-      }
+	      jetRawET_[ijet] += Original_Et;
+	      jetOffset_[ijet] += (*emean_.find(it)).second + (*esigma_.find(it)).second;
 
-    double mScale = offset/pseudojetTMP->Et();
+	   }
 
-    ///
-    ///!!! Change towers to rescaled towers///
-    ///      
-
-    int cshist = pseudojetTMP->cluster_hist_index();
-    pseudojetTMP->reset(pseudojetTMP->px()*mScale, pseudojetTMP->py()*mScale,
-			pseudojetTMP->pz()*mScale, pseudojetTMP->e()*mScale);
-    pseudojetTMP->set_cluster_hist_index(cshist);
-
-  }    
-
-  }
+	if(!reRunAlgo_){
+	   double mScale = (jetRawET_[ijet] - jetOffset_[ijet])/pseudojetTMP->Et();
+	   int cshist = pseudojetTMP->cluster_hist_index();
+	   pseudojetTMP->reset(pseudojetTMP->px()*mScale, pseudojetTMP->py()*mScale,
+			       pseudojetTMP->pz()*mScale, pseudojetTMP->e()*mScale);
+	   pseudojetTMP->set_cluster_hist_index(cshist);
+	   
+	}
+     }
 
 }
 

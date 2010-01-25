@@ -32,8 +32,10 @@ class PileUpSubtractor{
   void calculatePedestal(std::vector<fastjet::PseudoJet> const & coll);
   void subtractPedestal(std::vector<fastjet::PseudoJet> & coll);
   void calculateOrphanInput(std::vector<fastjet::PseudoJet> & orphanInput);
-  void offsetCorrectJets(std::vector<fastjet::PseudoJet> & orphanInput);
-  
+  void offsetCorrectJets();
+  double getPileUpEnergy(int ijet){return jetOffset_[ijet];}
+  void calculateJetOffset();
+
  private:
 
   // From jet producer
@@ -55,7 +57,10 @@ class PileUpSubtractor{
   std::map<int,int>     ntowersWithJets_;           // number of towers with jets
   std::map<int,double>  esigma_;                    // energy sigma
   std::map<int,double>  emean_;                     // energy mean
-  
+
+  std::vector<double>   jetRawET_;
+  std::vector<double>   jetOffset_;
+
 };
 
 #endif
