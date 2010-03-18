@@ -33,6 +33,7 @@ class PileUpSubtractor{
   void subtractPedestal(std::vector<fastjet::PseudoJet> & coll);
   void calculateOrphanInput(std::vector<fastjet::PseudoJet> & orphanInput);
   void offsetCorrectJets();
+  double getPileUpAtTower(const reco::CandidatePtr & in);
   double getPileUpEnergy(int ijet){return jetOffset_[ijet];}
   void calculateJetOffset();
 

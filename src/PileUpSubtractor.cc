@@ -314,6 +314,11 @@ void PileUpSubtractor::offsetCorrectJets()
 
 }
 
+double PileUpSubtractor::getPileUpAtTower(const reco::CandidatePtr & in){
+  int it = ieta(in);
+  return (*emean_.find(it)).second + (*esigma_.find(it)).second;
+}
+
 int ieta(const reco::CandidatePtr & in)
 {
   //   std::cout<<" Start BasePilupSubtractionJetProducer::ieta "<<std::endl;
