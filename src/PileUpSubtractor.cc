@@ -9,7 +9,7 @@
 
 #include "DataFormats/Candidate/interface/CandidateFwd.h"
 #include "DataFormats/Candidate/interface/Candidate.h"
-
+#include "DataFormats/Math/interface/deltaR.h"
 #include "Geometry/CaloGeometry/interface/CaloGeometry.h"
 #include "Geometry/Records/interface/CaloGeometryRecord.h"
 
@@ -27,11 +27,40 @@ PileUpSubtractor::PileUpSubtractor(const edm::ParameterSet& iConfig,
   fjInputs_(&towers),
   fjJets_(&output),
   reRunAlgo_ (iConfig.getUntrackedParameter<bool>("reRunAlgo",false)),
+  doAreaFastjet_ (iConfig.getParameter<bool>         ("doAreaFastjet")),
+  doRhoFastjet_  (iConfig.getParameter<bool>         ("doRhoFastjet")),
   jetPtMin_(iConfig.getParameter<double>       ("jetPtMin")),
   nSigmaPU_(iConfig.getParameter<double>("nSigmaPU")),
   radiusPU_(iConfig.getParameter<double>("radiusPU")),
   geo_(0)
-{;}
+{
+   if ( doAreaFastjet_ || doRhoFastjet_ ) {
+      // default Ghost_EtaMax should be 5
+      double ghostEtaMax = iConfig.getParameter<double>("Ghost_EtaMax");
+      // default Active_Area_Repeats 1
+      int    activeAreaRepeats = iConfig.getParameter<int> ("Active_Area_Repeats");
+      // default GhostArea 0.01
+      double ghostArea = iConfig.getParameter<double> ("GhostArea");
+      fjActiveArea_ =  ActiveAreaSpecPtr(new fastjet::ActiveAreaSpec(ghostEtaMax,
+								     activeAreaRepeats,
+								     ghostArea));
+      fjRangeDef_ = RangeDefPtr( new fastjet::RangeDefinition(ghostEtaMax) );
+   } 
+}
+
+void PileUpSubtractor::reset(std::vector<edm::Ptr<reco::Candidate> >& input,
+			     std::vector<fastjet::PseudoJet>& towers,
+			     std::vector<fastjet::PseudoJet>& output){
+  
+  inputs_ = &input;
+  fjInputs_ = &towers;
+  fjJets_ = &output;
+  fjOriginalInputs_ = (*fjInputs_);
+  for (unsigned int i = 0; i < fjInputs_->size(); ++i){
+    fjOriginalInputs_[i].set_user_index((*fjInputs_)[i].user_index());
+  }
+  
+}
 
 void PileUpSubtractor::setAlgorithm(ClusterSequencePtr& algorithm){
   fjClusterSeq_ = algorithm;
@@ -131,6 +160,8 @@ void PileUpSubtractor::calculatePedestal( vector<fastjet::PseudoJet> const & col
       double e1 = (*(emean_.find(it))).second;
       double e2 = (*emean2.find(it)).second;
       int nt = (*gt).second - (*(ntowersWithJets_.find(it))).second;
+
+      LogDebug("PileUpSubtractor")<<" ieta : "<<it<<" number of towers : "<<nt<<" e1 : "<<e1<<" e2 : "<<e2<<"\n";
         
       if(nt > 0) {
 	emean_[it] = e1/nt;
@@ -143,7 +174,7 @@ void PileUpSubtractor::calculatePedestal( vector<fastjet::PseudoJet> const & col
           emean_[it] = 0.;
           esigma_[it] = 0.;
 	}
-      LogDebug("PileUpSubtractor")<<"Pedestals : "<<emean_[it]<<"  "<<esigma_[it]<<"\n";
+      LogDebug("PileUpSubtractor")<<" ieta : "<<it<<" Pedestals : "<<emean_[it]<<"  "<<esigma_[it]<<"\n";
     }
 }
 
@@ -170,7 +201,6 @@ void PileUpSubtractor::subtractPedestal(vector<fastjet::PseudoJet> & coll)
     
     double etnew = itow->et() - (*(emean_.find(it))).second - (*(esigma_.find(it))).second;
     float mScale = etnew/input_object->Et(); 
-    
     if(etnew < 0.) mScale = 0.;
     
     math::XYZTLorentzVectorD towP4(input_object->px()*mScale, input_object->py()*mScale,
@@ -185,19 +215,19 @@ void PileUpSubtractor::subtractPedestal(vector<fastjet::PseudoJet> & coll)
   }
 }
 
-
-
 void PileUpSubtractor::calculateOrphanInput(vector<fastjet::PseudoJet> & orphanInput) 
 {
 
   LogDebug("PileUpSubtractor")<<"The subtractor calculating orphan input...\n";
 
   vector<int> jettowers; // vector of towers indexed by "user_index"
+  vector<pair<int,int> >  excludedTowers; // vector of excluded ieta, iphi values
+
   vector <fastjet::PseudoJet>::iterator pseudojetTMP = fjJets_->begin (),
     fjJetsEnd = fjJets_->end();
     
   for (; pseudojetTMP != fjJetsEnd ; ++pseudojetTMP) {
-      
+
     vector<fastjet::PseudoJet> newtowers;
       
     // get eta, phi of this jet
@@ -206,49 +236,47 @@ void PileUpSubtractor::calculateOrphanInput(vector<fastjet::PseudoJet> & orphanI
     // find towers within radiusPU_ of this jet
     for(vector<HcalDetId>::const_iterator im = allgeomid_.begin(); im != allgeomid_.end(); im++)
       {
-	double eta1 = geo_->getPosition((DetId)(*im)).eta();
-	double phi1 = geo_->getPosition((DetId)(*im)).phi();
-	double dphi = fabs(phi1-phi2);
-	double deta = eta1-eta2;
-	if (dphi > 4.*atan(1.)) dphi = 8.*atan(1.) - dphi;
-	double dr = sqrt(dphi*dphi+deta*deta);  
-	if( dr < radiusPU_) {
-	  ntowersWithJets_[(*im).ieta()]++;     
-	}
+	  double dr = reco::deltaR(geo_->getPosition((DetId)(*im)),(*pseudojetTMP));
+	  if( dr < radiusPU_) {
+	    ntowersWithJets_[(*im).ieta()]++;     
+	    excludedTowers.push_back(pair<int,int>(im->ieta(),im->iphi()));
+	  }
       }
-
+    
     vector<fastjet::PseudoJet>::const_iterator it = fjInputs_->begin(),
       fjInputsEnd = fjInputs_->end();
       
-    // 
     for (; it != fjInputsEnd; ++it ) {
       
-      double eta1 = it->eta();
-      double phi1 = it->phi();
+      int index = it->user_index();
+      int ie = ieta((*inputs_)[index]);
+      int ip = iphi((*inputs_)[index]);
       
-      double dphi = fabs(phi1-phi2);
-      double deta = eta1-eta2;
-      if (dphi > 4.*atan(1.)) dphi = 8.*atan(1.) - dphi;
-      double dr = sqrt(dphi*dphi+deta*deta);
-      
-      if( dr < radiusPU_) {
+      vector<pair<int,int> >::const_iterator exclude = find(excludedTowers.begin(),excludedTowers.end(),pair<int,int>(ie,ip));
+      if(exclude != excludedTowers.end()) {
 	newtowers.push_back(*it);
-	jettowers.push_back(it->user_index());
+	jettowers.push_back(index);
       } //dr < 0.5
-
     } // initial input collection  
-
   } // pseudojets
-
+  
   //
   // Create a new collections from the towers not included in jets 
   //
   for(vector<fastjet::PseudoJet>::const_iterator it = fjInputs_->begin(),
 	fjInputsEnd = fjInputs_->end(); it != fjInputsEnd; ++it ) {
-    vector<int>::const_iterator itjet = find(jettowers.begin(),jettowers.end(),it->user_index());
-    if( itjet == jettowers.end() ) orphanInput.push_back(*it); 
-  }
 
+    int index = it->user_index();
+    vector<int>::const_iterator itjet = find(jettowers.begin(),jettowers.end(),index);
+    if( itjet == jettowers.end() ){
+
+      const reco::CandidatePtr& originalTower = (*inputs_)[index];
+      fastjet::PseudoJet orphan(originalTower->px(),originalTower->py(),originalTower->pz(),originalTower->energy());
+      orphan.set_user_index(index);
+
+      orphanInput.push_back(orphan); 
+    }
+  }
 }
 
 
@@ -262,10 +290,18 @@ void PileUpSubtractor::offsetCorrectJets()
   using namespace reco;
 
   if(reRunAlgo_){
+    (*fjInputs_) = fjOriginalInputs_;
     subtractPedestal(*fjInputs_);
-    const fastjet::JetDefinition def = fjClusterSeq_->jet_def();
-    fjClusterSeq_.reset(new fastjet::ClusterSequence( *fjInputs_, def ));
-    *fjJets_ = fastjet::sorted_by_pt(fjClusterSeq_->inclusive_jets(jetPtMin_));
+    const fastjet::JetDefinition& def = fjClusterSeq_->jet_def();
+    if ( !doAreaFastjet_ && !doRhoFastjet_) {
+      fastjet::ClusterSequence newseq( *fjInputs_, def );
+      (*fjClusterSeq_) = newseq;
+    } else {
+      fastjet::ClusterSequenceArea newseq( *fjInputs_, def , *fjActiveArea_ );
+      (*fjClusterSeq_) = newseq;
+    }
+
+    (*fjJets_) = fastjet::sorted_by_pt(fjClusterSeq_->inclusive_jets(jetPtMin_));
   }
 
   //    
@@ -317,7 +353,17 @@ void PileUpSubtractor::offsetCorrectJets()
 
 }
 
-double PileUpSubtractor::getPileUpAtTower(const reco::CandidatePtr & in){
+double PileUpSubtractor::getMeanAtTower(const reco::CandidatePtr & in) const{
+   int it = ieta(in);
+   return (*emean_.find(it)).second;
+}
+
+double PileUpSubtractor::getSigmaAtTower(const reco::CandidatePtr & in) const {
+   int it = ieta(in);
+   return (*esigma_.find(it)).second;
+}
+
+double PileUpSubtractor::getPileUpAtTower(const reco::CandidatePtr & in) const {
   int it = ieta(in);
   return (*emean_.find(it)).second + (*esigma_.find(it)).second;
 }
@@ -352,5 +398,7 @@ int iphi(const reco::CandidatePtr & in)
 
   return it;
 }
+
+
 
 
